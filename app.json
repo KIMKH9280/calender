@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Personal Assistant",
+    "slug": "personal-assistant-calendar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1b2e"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.personalassistant.calendar"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1b2e"
+      },
+      "package": "com.personalassistant.calendar"
+    },
+    "scheme": "personal-assistant"
+  }
+}

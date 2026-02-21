@@ -1,0 +1,42 @@
+{
+  "name": "personal-assistant-calendar",
+  "version": "1.0.0",
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "start:lan": "expo start --lan --port 8082",
+    "start:tunnel": "expo start --tunnel",
+    "start:tunnel:clear": "expo start --tunnel --clear",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
+    "babel-preset-expo": "^54.0.10",
+    "expo": "~54.0.33",
+    "expo-asset": "~12.0.12",
+    "expo-constants": "~18.0.13",
+    "expo-file-system": "~18.0.4",
+    "expo-image-picker": "~16.0.3",
+    "expo-notifications": "~0.32.16",
+    "expo-status-bar": "~3.0.9",
+    "openai": "^4.73.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-calendars": "^1.1306.0",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "babel-plugin-module-resolver": "^5.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "overrides": {
+    "react-native-worklets": "0.5.1"
+  },
+  "private": true
+}

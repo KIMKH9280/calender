@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Expo QR Code</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #1a1b2e;
+      color: #edf2f4;
+    }
+    h1 { margin-bottom: 8px; font-size: 1.25rem; }
+    p { color: #8d99ae; margin-top: 0; }
+    img { border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Expo QR Code</h1>
+  <p>Expo Go 앱에서 이 QR 코드를 스캔하세요</p>
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=exp%3A%2F%2F180.64.107.53%3A8082" alt="QR Code" width="300" height="300">
+  <p style="margin-top: 16px; font-size: 0.9rem;">exp://180.64.107.53:8082</p>
+  <p style="margin-top: 12px; font-size: 0.8rem; color: #ff6b6b; max-width: 280px; text-align: center;">
+    ⚠️ 타임아웃 발생 시: <strong>터널 모드</strong> 사용<br>
+    <code style="background:#16213e;padding:4px 8px;border-radius:4px;font-size:0.75rem;">npm run start:tunnel</code><br>
+    실행 후 터미널에 표시되는 QR 코드를 스캔하세요
+  </p>
+  <p style="margin-top: 8px; font-size: 0.7rem; color: #8d99ae;">같은 Wi‑Fi에서도 안 되면 방화벽/라우터 설정 확인</p>
+</body>
+</html>
