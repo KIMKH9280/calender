@@ -1,6 +1,41 @@
 import OpenAI from 'openai';
 import { OPENAI_API_KEY } from '../config/env';
 
+/**
+ * Transcribe audio file to text using OpenAI Whisper
+ * @param {string} audioUri - File URI (file://...) from expo-av recording
+ * @returns {Promise<string>} Transcribed text
+ */
+export async function transcribeAudio(audioUri) {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI API key is not set. Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file.');
+  }
+  const ext = audioUri?.toLowerCase().endsWith('.m4a') ? 'm4a' : 'mp4';
+  const mime = ext === 'm4a' ? 'audio/m4a' : 'audio/mp4';
+  const formData = new FormData();
+  formData.append('file', {
+    uri: audioUri,
+    type: mime,
+    name: `recording.${ext}`,
+  });
+  formData.append('model', 'whisper-1');
+
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(err || `Whisper API error: ${response.status}`);
+  }
+  const data = await response.json();
+  return (data.text || '').trim();
+}
+
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
   dangerouslyAllowBrowser: true, // Required for Expo/React Native

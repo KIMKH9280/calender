@@ -11,6 +11,7 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 import { useTheme } from '../context/ThemeContext';
 import { useEvents } from '../context/EventsContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const DELETE_RED = '#ff3b30';
 
@@ -21,10 +22,10 @@ function formatTime(t) {
   return t;
 }
 
-function formatDateLabel(dateStr, todayStr) {
-  if (dateStr === todayStr) return 'Today';
+function formatDateLabel(dateStr, todayStr, t, dateLocale) {
+  if (dateStr === todayStr) return t ? t('today') : 'Today';
   const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(dateLocale || 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function sortEventsByTime(events) {
@@ -47,6 +48,7 @@ function EventRow({
   selected,
   onToggleSelect,
   swipeEnabled,
+  t,
 }) {
   const swipeRef = useRef(null);
 
@@ -56,23 +58,23 @@ function EventRow({
       onPress={() => {
         swipeRef.current?.close();
         Alert.alert(
-          'Delete Event',
-          `Delete "${event.title}"?`,
+          t('deleteEvent'),
+          t('deleteEventConfirm', { title: event.title }),
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => onDelete(event.id) },
+            { text: t('cancel'), style: 'cancel' },
+            { text: t('delete'), style: 'destructive', onPress: () => onDelete(event.id) },
           ]
         );
       }}
       activeOpacity={1}
     >
-      <Text style={styles.deleteSwipeText}>Delete</Text>
+      <Text style={styles.deleteSwipeText}>{t('delete')}</Text>
     </TouchableOpacity>
   );
 
   const content = (
     <TouchableOpacity
-      style={[styles.eventRow, { borderLeftColor: colors.accent }]}
+      style={[styles.eventRow, { borderLeftColor: colors.accent, backgroundColor: colors.textDim + '12' }]}
       onPress={() => {
         if (selectionMode) {
           onToggleSelect(event.id);
@@ -88,7 +90,7 @@ function EventRow({
         </View>
       )}
       <Text style={[styles.eventTime, { color: colors.textDim }]}>
-        {event.startTime ? formatTime(event.startTime) : 'All day'}
+        {event.startTime ? formatTime(event.startTime) : t('allDay')}
       </Text>
       <View style={styles.eventBody}>
         <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>
@@ -122,6 +124,7 @@ function EventRow({
 
 export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }) {
   const { colors } = useTheme();
+  const { t, dateLocale } = useLanguage();
   const { deleteEvent, deleteEvents } = useEvents();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -142,7 +145,13 @@ export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }
 
   const dayEvents = events.filter((e) => e.date === dateStr);
   const sortedEvents = sortEventsByTime(dayEvents);
-  const label = formatDateLabel(dateStr, new Date().toISOString().slice(0, 10));
+  const todayStr = require('../utils/date').getLocalDateString();
+  const isToday = dateStr === todayStr;
+  const labelFull = new Date(dateStr + 'T12:00:00').toLocaleDateString(dateLocale, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
   const selectedCount = selectedIds.size;
 
   const handleToggleSelect = (id) => {
@@ -158,12 +167,12 @@ export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }
     const ids = Array.from(selectedIds);
     const count = ids.length;
     Alert.alert(
-      'Delete Events',
-      `Delete ${count} event${count !== 1 ? 's' : ''}?`,
+      t('deleteEvents'),
+      t('deleteEventsConfirm', { count }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('delete'),
           style: 'destructive',
           onPress: async () => {
             await deleteEvents(ids);
@@ -177,15 +186,15 @@ export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }
 
   return (
     <View style={[styles.wrap, { backgroundColor: colors.card }]}>
-      <View style={[styles.header, { borderBottomColor: colors.textDim + '30' }]}>
+      <View style={[styles.header, { borderBottomColor: colors.textDim + '25' }]}>
         <TouchableOpacity
           style={styles.headerTouch}
           onPress={onPressHeader}
           activeOpacity={0.7}
         >
-          <Text style={[styles.headerTitle, { color: colors.text }]}>{label}</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>{labelFull}</Text>
           <Text style={[styles.headerHint, { color: colors.textDim }]}>
-            {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''} · Tap to view
+            {t('eventsCount', { count: dayEvents.length })}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -198,7 +207,7 @@ export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }
               { color: selectionMode ? colors.accent : colors.textDim },
             ]}
           >
-            {selectionMode ? 'Cancel' : 'Select'}
+            {selectionMode ? t('cancel') : t('select')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -207,7 +216,7 @@ export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }
         {sortedEvents.length === 0 ? (
           <View style={styles.empty}>
             <Text style={[styles.emptyText, { color: colors.textDim }]}>
-              No events {dateStr === new Date().toISOString().slice(0, 10) ? 'today' : 'on this day'} 🎉
+              {isToday ? t('noEventsToday') : t('noEventsOnThisDay')}
             </Text>
           </View>
         ) : (
@@ -228,6 +237,7 @@ export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }
                 selected={selectedIds.has(event.id)}
                 onToggleSelect={handleToggleSelect}
                 swipeEnabled={!selectionMode}
+                t={t}
               />
             ))}
           </ScrollView>
@@ -239,7 +249,7 @@ export function SchedulePreview({ dateStr, events, onPressHeader, onEventPress }
               style={[styles.bulkDeleteBtn, { backgroundColor: DELETE_RED }]}
               onPress={handleBulkDelete}
             >
-              <Text style={styles.bulkDeleteText}>Delete ({selectedCount})</Text>
+              <Text style={styles.bulkDeleteText}>{t('delete')} ({selectedCount})</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -275,11 +285,13 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 12, paddingBottom: 12 },
   eventRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 8,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     paddingLeft: 12,
     borderLeftWidth: 3,
-    marginBottom: 4,
+    marginBottom: 8,
+    borderRadius: 8,
   },
   eventTime: { fontSize: 13, fontWeight: '600', width: 56 },
   eventBody: { flex: 1 },

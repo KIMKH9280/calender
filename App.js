@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
@@ -6,6 +7,7 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EventsProvider } from './src/context/EventsContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { LanguageProvider } from './src/context/LanguageContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 function ThemedApp() {
@@ -21,23 +23,29 @@ function ThemedApp() {
   );
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldShowAlert: true,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldShowAlert: true,
+    }),
+  });
+} catch (e) {
+  // Ignore notification setup errors on init
+}
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <EventsProvider>
-        <ThemedApp />
-      </EventsProvider>
-    </ThemeProvider>
+    <LanguageProvider>
+      <ThemeProvider>
+        <EventsProvider>
+          <ThemedApp />
+        </EventsProvider>
+      </ThemeProvider>
+    </LanguageProvider>
   );
 }
 

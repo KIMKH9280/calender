@@ -14,6 +14,7 @@ import {
   DOT_PRESETS,
   HOLIDAY_PRESETS,
 } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 function ColorSwatch({ color, selected, onPress }) {
   return (
@@ -40,21 +41,44 @@ function Section({ title, children }) {
   );
 }
 
+const LANGUAGES = [
+  { id: 'en', nameKey: 'english' },
+  { id: 'ko', nameKey: 'korean' },
+];
+
 export function SettingsScreen({ onBack }) {
   const { colors, theme, setTheme } = useTheme();
+  const { locale, setLocale, t } = useLanguage();
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: colors.textDim + '30' }]}>
         <TouchableOpacity onPress={onBack}>
-          <Text style={[styles.backBtn, { color: colors.accent }]}>← Back</Text>
+          <Text style={[styles.backBtn, { color: colors.accent }]}>{t('back')}</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Settings</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{t('settings')}</Text>
         <View style={{ width: 60 }} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <Section title="Accent color (buttons, highlights)">
+        <Section title={t('language')}>
+          <View style={styles.swatchRow}>
+            {LANGUAGES.map((lang) => (
+              <TouchableOpacity
+                key={lang.id}
+                onPress={() => setLocale(lang.id)}
+                style={[
+                  styles.langOption,
+                  { backgroundColor: colors.card, borderColor: locale === lang.id ? colors.accent : 'transparent' },
+                ]}
+              >
+                <Text style={[styles.langLabel, { color: colors.text }]}>{t(lang.nameKey)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Section>
+
+        <Section title={t('settingsAccent')}>
           <View style={styles.swatchRow}>
             {ACCENT_PRESETS.map((p) => (
               <TouchableOpacity
@@ -75,7 +99,7 @@ export function SettingsScreen({ onBack }) {
           </View>
         </Section>
 
-        <Section title="Background style">
+        <Section title={t('settingsBackground')}>
           <View style={styles.bgRow}>
             {BACKGROUND_PRESETS.map((p) => (
               <TouchableOpacity
@@ -97,7 +121,7 @@ export function SettingsScreen({ onBack }) {
           </View>
         </Section>
 
-        <Section title="Calendar dot indicator">
+        <Section title={t('settingsDot')}>
           <View style={styles.swatchRow}>
             {DOT_PRESETS.map((p) => {
               const dotColor = p.color ?? colors.accent;
@@ -121,7 +145,7 @@ export function SettingsScreen({ onBack }) {
           </View>
         </Section>
 
-        <Section title="Weekend / holiday text color">
+        <Section title={t('settingsHoliday')}>
           <View style={styles.swatchRow}>
             {HOLIDAY_PRESETS.map((p) => (
               <TouchableOpacity
@@ -208,5 +232,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   bgLabel: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  langOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+  },
+  langLabel: { fontSize: 16, fontWeight: '600' },
   footer: { height: 40 },
 });

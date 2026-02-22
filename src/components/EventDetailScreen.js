@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { AddEventForm } from './AddEventForm';
 
 function formatTime(t) {
@@ -21,9 +22,9 @@ function formatTime(t) {
   return t;
 }
 
-function formatDate(dateStr) {
+function formatDate(dateStr, dateLocale = 'en-US') {
   const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(dateLocale, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 function formatDuration(startTime, endTime) {
@@ -33,17 +34,18 @@ function formatDuration(startTime, endTime) {
 
 export function EventDetailScreen({ event, visible, onClose, onSave, onDelete }) {
   const { colors } = useTheme();
+  const { t, dateLocale } = useLanguage();
   const insets = useSafeAreaInsets();
   const [editing, setEditing] = useState(false);
   if (!event) return null;
 
   const handleDelete = () => {
     Alert.alert(
-      'Delete Event',
-      `Are you sure you want to delete "${event.title}"?`,
+      t('deleteEvent'),
+      t('deleteConfirm', { title: event.title }),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => onDelete?.(event.id) },
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('delete'), style: 'destructive', onPress: () => onDelete?.(event.id) },
       ]
     );
   };
@@ -71,7 +73,7 @@ export function EventDetailScreen({ event, visible, onClose, onSave, onDelete })
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.backBtn, { color: colors.accent }]}>← Cancel</Text>
+              <Text style={[styles.backBtn, { color: colors.accent }]}>← {t('cancel')}</Text>
             </TouchableOpacity>
           </View>
           <AddEventForm
@@ -98,7 +100,7 @@ export function EventDetailScreen({ event, visible, onClose, onSave, onDelete })
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             activeOpacity={0.7}
           >
-            <Text style={[styles.backBtn, { color: colors.accent }]}>← 홈</Text>
+            <Text style={[styles.backBtn, { color: colors.accent }]}>{t('home')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setEditing(true)}
@@ -106,7 +108,7 @@ export function EventDetailScreen({ event, visible, onClose, onSave, onDelete })
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             activeOpacity={0.7}
           >
-            <Text style={[styles.editBtn, { color: colors.accent }]}>Edit</Text>
+            <Text style={[styles.editBtn, { color: colors.accent }]}>{t('edit')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -114,35 +116,35 @@ export function EventDetailScreen({ event, visible, onClose, onSave, onDelete })
           <Text style={[styles.title, { color: colors.text }]}>{event.title}</Text>
 
           <View style={[styles.section, { backgroundColor: colors.card }]}>
-            <Text style={[styles.sectionLabel, { color: colors.textDim }]}>Date</Text>
-            <Text style={[styles.sectionValue, { color: colors.text }]}>{formatDate(event.date)}</Text>
+            <Text style={[styles.sectionLabel, { color: colors.textDim }]}>{t('date')}</Text>
+            <Text style={[styles.sectionValue, { color: colors.text }]}>{formatDate(event.date, dateLocale)}</Text>
           </View>
 
           {(event.startTime || event.endTime) && (
             <View style={[styles.section, { backgroundColor: colors.card }]}>
               <Text style={[styles.sectionLabel, { color: colors.textDim }]}>
-                {event.startTime && event.endTime ? 'Time & Duration' : 'Time'}
+                {event.startTime && event.endTime ? t('timeAndDuration') : t('time')}
               </Text>
               <Text style={[styles.sectionValue, { color: colors.text }]}>
                 {event.startTime && event.endTime
                   ? formatDuration(event.startTime, event.endTime)
                   : event.startTime
                   ? formatTime(event.startTime)
-                  : 'All day'}
+                  : t('allDay')}
               </Text>
             </View>
           )}
 
           {event.location ? (
             <View style={[styles.section, { backgroundColor: colors.card }]}>
-              <Text style={[styles.sectionLabel, { color: colors.textDim }]}>Location</Text>
+              <Text style={[styles.sectionLabel, { color: colors.textDim }]}>{t('location')}</Text>
               <Text style={[styles.sectionValue, { color: colors.text }]}>📍 {event.location}</Text>
             </View>
           ) : null}
 
           {(event.description || event.notes) ? (
             <View style={[styles.section, { backgroundColor: colors.card }]}>
-              <Text style={[styles.sectionLabel, { color: colors.textDim }]}>Notes</Text>
+              <Text style={[styles.sectionLabel, { color: colors.textDim }]}>{t('notes')}</Text>
               <Text style={[styles.sectionValue, { color: colors.text }]}>
                 {event.description || event.notes}
               </Text>
@@ -153,7 +155,7 @@ export function EventDetailScreen({ event, visible, onClose, onSave, onDelete })
             style={[styles.deleteBtn, { backgroundColor: colors.accent + '20', borderColor: colors.accent }]}
             onPress={handleDelete}
           >
-            <Text style={[styles.deleteBtnText, { color: colors.accent }]}>Delete Event</Text>
+            <Text style={[styles.deleteBtnText, { color: colors.accent }]}>{t('deleteEvent')}</Text>
           </TouchableOpacity>
 
           <View style={styles.footer} />

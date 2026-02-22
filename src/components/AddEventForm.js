@@ -11,6 +11,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const BOTTOM_PADDING = 40;
 
@@ -27,10 +28,10 @@ function toTimeStr(date) {
   return `${h}:${m}`;
 }
 
-function formatDateReadable(dateStr) {
+function formatDateReadable(dateStr, dateLocale = 'en-US') {
   if (!dateStr) return '';
   const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 function formatTimeDisplay(str) {
@@ -60,9 +61,10 @@ function parseTime(str) {
 
 export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
   const { colors } = useTheme();
+  const { t, dateLocale } = useLanguage();
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(BOTTOM_PADDING, insets.bottom);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = require('../utils/date').getLocalDateString();
   const isEdit = !!initialEvent;
   const defaultDate = initialEvent?.date ?? selectedDate ?? today;
 
@@ -138,10 +140,10 @@ export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
         showsVerticalScrollIndicator={true}
         contentContainerStyle={[styles.scroll, { paddingBottom: bottomPadding }]}
       >
-        <Text style={[styles.formTitle, { color: colors.text }]}>{isEdit ? 'Edit event' : 'New event'}</Text>
+        <Text style={[styles.formTitle, { color: colors.text }]}>{isEdit ? t('editEvent') : t('newEvent')}</Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.card, color: colors.text }]}
-          placeholder="Title *"
+          placeholder={t('titleRequired')}
           placeholderTextColor={colors.textDim}
           value={title}
           onChangeText={setTitle}
@@ -153,37 +155,9 @@ export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
           onPress={() => setShowDatePicker(true)}
         >
           <Text style={[styles.pickerText, date ? { color: colors.text } : { color: colors.textDim }]}>
-            {date ? formatDateReadable(date) : 'Select date'}
+            {date ? formatDateReadable(date, dateLocale) : t('selectDate')}
           </Text>
         </TouchableOpacity>
-
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.card, color: colors.text }]}
-          placeholder="Location (optional)"
-          placeholderTextColor={colors.textDim}
-          value={location}
-          onChangeText={setLocation}
-        />
-
-        <View style={styles.row}>
-          <TouchableOpacity
-            style={[styles.input, styles.halfLeft, styles.rowInput, styles.pickerTouch, { backgroundColor: colors.card }]}
-            onPress={() => setShowStartPicker(true)}
-          >
-            <Text style={[styles.pickerText, startTime ? { color: colors.text } : { color: colors.textDim }]}>
-              {startTime ? formatTimeDisplay(startTime) : 'Start time'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.input, styles.halfRight, styles.rowInput, styles.pickerTouch, { backgroundColor: colors.card }]}
-            onPress={() => setShowEndPicker(true)}
-          >
-            <Text style={[styles.pickerText, endTime ? { color: colors.text } : { color: colors.textDim }]}>
-              {endTime ? formatTimeDisplay(endTime) : 'End time'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         {showDatePicker && (
           <>
             <DateTimePicker
@@ -194,12 +168,44 @@ export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
             />
             {Platform.OS === 'ios' && (
               <TouchableOpacity style={styles.doneRow} onPress={() => setShowDatePicker(false)}>
-                <Text style={[styles.doneText, { color: colors.accent }]}>Done</Text>
+                <Text style={[styles.doneText, { color: colors.accent }]}>{t('done')}</Text>
               </TouchableOpacity>
             )}
           </>
         )}
 
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.card, color: colors.text }]}
+          placeholder={t('locationOptional')}
+          placeholderTextColor={colors.textDim}
+          value={location}
+          onChangeText={setLocation}
+        />
+
+        <View style={styles.row}>
+          <TouchableOpacity
+            style={[styles.input, styles.halfLeft, styles.rowInput, styles.pickerTouch, { backgroundColor: colors.card }]}
+            onPress={() => {
+              setShowEndPicker(false);
+              setShowStartPicker(true);
+            }}
+          >
+            <Text style={[styles.pickerText, startTime ? { color: colors.text } : { color: colors.textDim }]}>
+              {startTime ? formatTimeDisplay(startTime) : t('startTime')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.input, styles.halfRight, styles.rowInput, styles.pickerTouch, { backgroundColor: colors.card }]}
+            onPress={() => {
+              setShowStartPicker(false);
+              setShowEndPicker(true);
+            }}
+          >
+            <Text style={[styles.pickerText, endTime ? { color: colors.text } : { color: colors.textDim }]}>
+              {endTime ? formatTimeDisplay(endTime) : t('endTime')}
+            </Text>
+          </TouchableOpacity>
+        </View>
         {showStartPicker && (
           <>
             <DateTimePicker
@@ -209,13 +215,18 @@ export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
               onChange={handleStartTimeChange}
             />
             {Platform.OS === 'ios' && (
-              <TouchableOpacity style={styles.doneRow} onPress={() => setShowStartPicker(false)}>
-                <Text style={[styles.doneText, { color: colors.accent }]}>Done</Text>
+              <TouchableOpacity
+                style={styles.doneRow}
+                onPress={() => {
+                  setStartTime(toTimeStr(startTimeObj));
+                  setShowStartPicker(false);
+                }}
+              >
+                <Text style={[styles.doneText, { color: colors.accent }]}>{t('done')}</Text>
               </TouchableOpacity>
             )}
           </>
         )}
-
         {showEndPicker && (
           <>
             <DateTimePicker
@@ -225,8 +236,14 @@ export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
               onChange={handleEndTimeChange}
             />
             {Platform.OS === 'ios' && (
-              <TouchableOpacity style={styles.doneRow} onPress={() => setShowEndPicker(false)}>
-                <Text style={[styles.doneText, { color: colors.accent }]}>Done</Text>
+              <TouchableOpacity
+                style={styles.doneRow}
+                onPress={() => {
+                  setEndTime(toTimeStr(endTimeObj));
+                  setShowEndPicker(false);
+                }}
+              >
+                <Text style={[styles.doneText, { color: colors.accent }]}>{t('done')}</Text>
               </TouchableOpacity>
             )}
           </>
@@ -234,7 +251,7 @@ export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
 
         <TextInput
           style={[styles.input, styles.area, { backgroundColor: colors.card, color: colors.text }]}
-          placeholder="Description (optional)"
+          placeholder={t('descriptionOptional')}
           placeholderTextColor={colors.textDim}
           value={description}
           onChangeText={setDescription}
@@ -244,14 +261,14 @@ export function AddEventForm({ onSave, onCancel, initialEvent, selectedDate }) {
 
         <View style={styles.actions}>
           <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: colors.card }]} onPress={onCancel}>
-            <Text style={[styles.cancelBtnText, { color: colors.textDim }]}>Cancel</Text>
+            <Text style={[styles.cancelBtnText, { color: colors.textDim }]}>{t('cancel')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.saveBtn, { backgroundColor: colors.accent }, !title.trim() && styles.saveBtnDisabled]}
             onPress={handleSave}
             disabled={!title.trim()}
           >
-            <Text style={styles.saveBtnText}>Save</Text>
+            <Text style={styles.saveBtnText}>{t('save')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

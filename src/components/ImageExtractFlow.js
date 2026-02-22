@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { extractEventsFromImages } from '../services/openai';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const MAX_IMAGES = 5;
 const DUPLICATE_WARNING_BG = 'rgba(255, 165, 0, 0.25)';
@@ -56,6 +57,7 @@ async function uriToBase64(uri) {
 
 export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existingEvents = [] }) {
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const [step, setStep] = useState('pick'); // 'pick' | 'loading' | 'preview' | 'error'
   const [selectedUris, setSelectedUris] = useState([]);
   const [extractedEvents, setExtractedEvents] = useState([]);
@@ -86,7 +88,7 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
   const pickFromCamera = async () => {
     const ok = await requestCameraPermission();
     if (!ok) {
-      Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+      Alert.alert(t('permissionNeeded'), t('cameraPermission'));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -103,7 +105,7 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
   const pickFromGallery = async () => {
     const ok = await requestMediaLibraryPermission();
     if (!ok) {
-      Alert.alert('Permission needed', 'Photo library access is required to select images.');
+      Alert.alert(t('permissionNeeded'), t('galleryPermission'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -129,16 +131,16 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
         if (b64) base64List.push(b64);
       }
       if (base64List.length === 0) {
-        setErrorMessage('Could not read images.');
+        setErrorMessage(t('couldNotReadImages'));
         setStep('error');
         return;
       }
-      const today = todayStr || new Date().toISOString().slice(0, 10);
+      const today = todayStr || require('../utils/date').getLocalDateString();
       const events = await extractEventsFromImages(base64List, today);
       setExtractedEvents(events);
       setStep('preview');
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to extract events from images.');
+      setErrorMessage(err.message || t('extractFromImagesFailed'));
       setStep('error');
     }
   };
@@ -160,10 +162,10 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
         <View style={[styles.card, { backgroundColor: colors.bg }]}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.text }]}>
-              {step === 'pick' && 'Extract from images'}
-              {step === 'loading' && 'Analyzing…'}
-              {step === 'preview' && 'Preview events'}
-              {step === 'error' && 'Error'}
+              {step === 'pick' && t('imageExtractTitle')}
+              {step === 'loading' && t('analyzing')}
+              {step === 'preview' && t('previewEvents')}
+              {step === 'error' && t('error')}
             </Text>
             <TouchableOpacity onPress={handleClose} hitSlop={12}>
               <Text style={[styles.closeBtn, { color: colors.textDim }]}>✕</Text>
@@ -172,19 +174,19 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
 
           {step === 'pick' && (
             <>
-              <Text style={[styles.hint, { color: colors.textDim }]}>Camera or gallery (up to {MAX_IMAGES} images). Only schedule/reservation info is extracted.</Text>
+              <Text style={[styles.hint, { color: colors.textDim }]}>{t('imagePickHint', { max: MAX_IMAGES })}</Text>
               <View style={styles.pickRow}>
                 <TouchableOpacity style={[styles.pickBtn, { backgroundColor: colors.card }]} onPress={pickFromCamera}>
                   <Text style={styles.pickIcon}>📷</Text>
-                  <Text style={[styles.pickLabel, { color: colors.text }]}>Camera</Text>
+                  <Text style={[styles.pickLabel, { color: colors.text }]}>{t('camera')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.pickBtn, { backgroundColor: colors.card }]} onPress={pickFromGallery}>
                   <Text style={styles.pickIcon}>🖼️</Text>
-                  <Text style={[styles.pickLabel, { color: colors.text }]}>Gallery</Text>
+                  <Text style={[styles.pickLabel, { color: colors.text }]}>{t('gallery')}</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity style={styles.cancelBtn} onPress={handleClose}>
-                <Text style={[styles.cancelBtnText, { color: colors.textDim }]}>Cancel</Text>
+                <Text style={[styles.cancelBtnText, { color: colors.textDim }]}>{t('cancel')}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -192,7 +194,7 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
           {step === 'loading' && (
             <View style={styles.loadingWrap}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={[styles.loadingText, { color: colors.textDim }]}>Sending to OpenAI Vision…</Text>
+              <Text style={[styles.loadingText, { color: colors.textDim }]}>{t('analyzing')}</Text>
             </View>
           )}
 
@@ -200,10 +202,10 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
             <>
               <Text style={[styles.errorText, { color: colors.accent }]}>{errorMessage}</Text>
               <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.accent }]} onPress={() => setStep('pick')}>
-                <Text style={styles.retryBtnText}>Try again</Text>
+                <Text style={styles.retryBtnText}>{t('tryAgain')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelBtn} onPress={handleClose}>
-                <Text style={[styles.cancelBtnText, { color: colors.textDim }]}>Close</Text>
+                <Text style={[styles.cancelBtnText, { color: colors.textDim }]}>{t('close')}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -218,7 +220,7 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
                 </ScrollView>
               )}
               {extractedEvents.length === 0 ? (
-                <Text style={[styles.noEvents, { color: colors.textDim }]}>No schedule/reservation events found in the images.</Text>
+                <Text style={[styles.noEvents, { color: colors.textDim }]}>{t('noScheduleInImages')}</Text>
               ) : (
                 <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent}>
                   {extractedEvents.map((e, i) => {
@@ -239,7 +241,7 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
                               {[e.date, e.startTime || e.endTime, e.location].filter(Boolean).join(' · ')}
                             </Text>
                             {isDuplicate && (
-                              <Text style={styles.duplicateLabel}>⚠️ Similar event exists</Text>
+                              <Text style={styles.duplicateLabel}>{t('similarEventExists')}</Text>
                             )}
                           </View>
                           <TouchableOpacity
@@ -257,14 +259,14 @@ export function ImageExtractFlow({ visible, onClose, onConfirm, todayStr, existi
               )}
               <View style={styles.previewActions}>
                 <TouchableOpacity style={[styles.previewCancelBtn, { backgroundColor: colors.card }]} onPress={() => setStep('pick')}>
-                  <Text style={[styles.previewCancelText, { color: colors.textDim }]}>Back</Text>
+                  <Text style={[styles.previewCancelText, { color: colors.textDim }]}>{t('backBtn')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.previewConfirmBtn, { backgroundColor: colors.accent }, extractedEvents.length === 0 && styles.previewConfirmDisabled]}
                   onPress={handleConfirm}
                   disabled={extractedEvents.length === 0}
                 >
-                  <Text style={styles.previewConfirmText}>Add to calendar ({extractedEvents.length})</Text>
+                  <Text style={styles.previewConfirmText}>{t('addToCalendarCount', { count: extractedEvents.length })}</Text>
                 </TouchableOpacity>
               </View>
             </>

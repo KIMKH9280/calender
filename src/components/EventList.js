@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useEvents } from '../context/EventsContext';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 function formatTime(t) {
   if (!t) return '';
@@ -11,14 +12,14 @@ function formatTime(t) {
   return t;
 }
 
-function EventRow({ event, showDelete, onDelete, onPress, colors }) {
+function EventRow({ event, showDelete, onDelete, onPress, colors, t }) {
   const rightActions = () => (
     <TouchableOpacity
       style={[styles.deleteSwipe, { backgroundColor: colors.accent }]}
       onPress={() => onDelete(event.id)}
       activeOpacity={1}
     >
-      <Text style={styles.deleteSwipeText}>Delete</Text>
+      <Text style={styles.deleteSwipeText}>{t ? t('delete') : 'Delete'}</Text>
     </TouchableOpacity>
   );
 
@@ -63,11 +64,12 @@ function EventRow({ event, showDelete, onDelete, onPress, colors }) {
 export function EventList({ events, date, showDelete, onEventPress }) {
   const { deleteEvent } = useEvents();
   const { colors } = useTheme();
+  const { t } = useLanguage();
 
   if (!events || events.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={[styles.emptyText, { color: colors.textDim }]}>No events this day</Text>
+        <Text style={[styles.emptyText, { color: colors.textDim }]}>{t('noEventsOnThisDay')}</Text>
       </View>
     );
   }
@@ -82,6 +84,7 @@ export function EventList({ events, date, showDelete, onEventPress }) {
           onDelete={deleteEvent}
           onPress={onEventPress}
           colors={colors}
+          t={t}
         />
       ))}
     </View>

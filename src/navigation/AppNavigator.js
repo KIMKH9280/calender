@@ -21,11 +21,13 @@ import { extractEventsFromText } from '../services/openai';
 import { EventList } from '../components/EventList';
 import { AddEventForm } from '../components/AddEventForm';
 import { ImageExtractFlow } from '../components/ImageExtractFlow';
+import { VoiceInputFlow } from '../components/VoiceInputFlow';
 import { SettingsScreen } from '../components/SettingsScreen';
 import { SchedulePreview } from '../components/SchedulePreview';
 import { EventDetailScreen } from '../components/EventDetailScreen';
 import { SwipeableCalendar } from '../components/SwipeableCalendar';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const FIXED_KOREAN_HOLIDAYS = [
   { month: 1, day: 1 },
@@ -51,16 +53,43 @@ function toLocalDateString(date) {
   return `${year}-${month}-${day}`;
 }
 
+function getNextWeekday(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  if (day === 0) d.setDate(d.getDate() + 1);
+  else if (day === 6) d.setDate(d.getDate() + 2);
+  return d;
+}
+
 function getKoreanPublicHolidaySet(year) {
   if (HOLIDAY_CACHE[year]) return HOLIDAY_CACHE[year];
   const holidays = new Set();
   FIXED_KOREAN_HOLIDAYS.forEach(({ month, day }) => {
+    const date = new Date(year, month - 1, day);
     const m = `${month}`.padStart(2, '0');
     const d = `${day}`.padStart(2, '0');
     holidays.add(`${year}-${m}-${d}`);
+    const dow = date.getDay();
+    if (dow === 0 || dow === 6) {
+      const sub = getNextWeekday(date);
+      const sm = `${sub.getMonth() + 1}`.padStart(2, '0');
+      const sd = `${sub.getDate()}`.padStart(2, '0');
+      holidays.add(`${sub.getFullYear()}-${sm}-${sd}`);
+    }
   });
   const lunar = LUNAR_KOREAN_HOLIDAYS_BY_YEAR[year] || [];
-  lunar.forEach((dateStr) => holidays.add(dateStr));
+  lunar.forEach((dateStr) => {
+    holidays.add(dateStr);
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const dow = date.getDay();
+    if (dow === 0 || dow === 6) {
+      const sub = getNextWeekday(date);
+      const sm = `${sub.getMonth() + 1}`.padStart(2, '0');
+      const sd = `${sub.getDate()}`.padStart(2, '0');
+      holidays.add(`${sub.getFullYear()}-${sm}-${sd}`);
+    }
+  });
   HOLIDAY_CACHE[year] = holidays;
   return holidays;
 }
@@ -111,8 +140,7 @@ function DayDots({ count, dotColor }) {
 function getWeekStart(date) {
   const start = new Date(date);
   const day = start.getDay();
-  const diff = (day + 6) % 7;
-  start.setDate(start.getDate() - diff);
+  start.setDate(start.getDate() - day);
   return start;
 }
 
@@ -137,7 +165,15 @@ function parseHour(startTime) {
   return hour;
 }
 
-function WeekView({ baseDate, events, onSelectDate, colors }) {
+function formatTimeForWeek(t, tFn) {
+  if (!t) return tFn ? tFn('allDay') : 'All day';
+  if (typeof t !== 'string') return tFn ? tFn('allDay') : 'All day';
+  const cleaned = t.replace(/\D/g, '');
+  if (cleaned.length >= 4) return `${cleaned.slice(0, 2)}:${cleaned.slice(2)}`;
+  return t;
+}
+
+function WeekView({ baseDate, events, selectedDate, onSelectDate, onEventPress, colors, dateLocale, t, isCenter }) {
   const weekStart = getWeekStart(baseDate);
   const days = Array.from({ length: 7 }, (_, idx) => {
     const d = new Date(weekStart);
@@ -145,100 +181,144 @@ function WeekView({ baseDate, events, onSelectDate, colors }) {
     return d;
   });
 
-  const eventsBySlot = {};
-  events.forEach((event) => {
-    if (!event.date) return;
-    const hour = parseHour(event.startTime);
-    const slotKey = `${event.date}::${hour === null ? 'all-day' : hour}`;
-    if (!eventsBySlot[slotKey]) eventsBySlot[slotKey] = [];
-    eventsBySlot[slotKey].push(event);
+  const todayStr = toLocalDateString(new Date());
+  const weekStartStr = toLocalDateString(weekStart);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndStr = toLocalDateString(weekEnd);
+  const isSelectedInThisWeek = selectedDate && selectedDate >= weekStartStr && selectedDate <= weekEndStr;
+  const effectiveSelected = isSelectedInThisWeek ? selectedDate : (isCenter ? todayStr : null);
+
+  const weekEventCount = events.filter((e) => {
+    if (!e.date) return false;
+    return e.date >= toLocalDateString(weekStart) && e.date <= toLocalDateString(weekEnd);
+  }).length;
+
+  const eventsByDate = {};
+  events.forEach((e) => {
+    if (!e.date) return;
+    if (!eventsByDate[e.date]) eventsByDate[e.date] = [];
+    eventsByDate[e.date].push(e);
+  });
+  Object.keys(eventsByDate).forEach((d) => {
+    eventsByDate[d].sort((a, b) => {
+      const at = a.startTime || '';
+      const bt = b.startTime || '';
+      if (!at && !bt) return 0;
+      if (!at) return 1;
+      if (!bt) return -1;
+      return at.localeCompare(bt);
+    });
   });
 
-  const renderEvents = (dateStr, hour) => {
-    const slotKey = `${dateStr}::${hour === null ? 'all-day' : hour}`;
-    const slotEvents = eventsBySlot[slotKey] || [];
-    return slotEvents.map((event) => (
-      <View key={event.id} style={[styles.weekEventChip, { backgroundColor: colors.accentDim }]}>
-        <Text style={[styles.weekEventText, { color: colors.text }]} numberOfLines={1}>
-          {event.title}
-        </Text>
-      </View>
-    ));
-  };
+  const loc = dateLocale || 'en-US';
+  const weekRangeStr = `${weekStart.toLocaleDateString(loc, { month: 'short', day: 'numeric' })} – ${weekEnd.toLocaleDateString(loc, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const selectedEvents = eventsByDate[effectiveSelected || todayStr] || [];
 
   return (
-    <View style={[styles.weekWrap, { backgroundColor: colors.card }]}>
-      <View style={[styles.weekHeaderRow, { borderBottomColor: colors.textDim + '30' }]}>
-        <View style={styles.weekTimeHeader} />
+    <View style={[styles.weekWrap, { backgroundColor: colors.card, flex: 1 }]}>
+      <View style={[styles.weekSummaryRow, { borderBottomColor: colors.textDim + '20' }]}>
+        <Text style={[styles.weekSummaryText, { color: colors.textDim }]}>
+          {weekRangeStr} · {t ? t('eventsCount', { count: weekEventCount }) : `${weekEventCount} events`}
+        </Text>
+      </View>
+
+      <View style={[styles.weekSevenRow, { borderBottomColor: colors.textDim + '25' }]}>
         {days.map((date) => {
           const dateStr = toLocalDateString(date);
-          const todayStr = new Date().toISOString().slice(0, 10);
           const isToday = dateStr === todayStr;
+          const isSelected = dateStr === effectiveSelected;
           const holidays = getKoreanPublicHolidaySet(date.getFullYear());
           const holidayOrWeekend = isWeekend(date) || holidays.has(dateStr);
-          const dayEventCount = events.filter((e) => e.date === dateStr).length;
+          const count = (eventsByDate[dateStr] || []).length;
+
           return (
             <TouchableOpacity
               key={dateStr}
-              style={styles.weekDayHeader}
-              onPress={() => onSelectDate(dateStr)}
+              style={[
+                styles.weekSevenCol,
+                { borderRightColor: colors.textDim + '15' },
+                isSelected && { backgroundColor: colors.accent + '20' },
+                isToday && !isSelected && { backgroundColor: colors.accent + '10' },
+              ]}
+              onPress={() => onSelectDate?.(dateStr)}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.weekDayName, { color: colors.textDim }, holidayOrWeekend && !isToday && { color: colors.holiday }]}>
-                {date.toLocaleDateString('en-US', { weekday: 'short' })}
+              <Text style={[styles.weekSevenDayName, { color: colors.textDim }, holidayOrWeekend && !isToday && { color: colors.holiday }]}>
+                {date.toLocaleDateString(loc, { weekday: 'short' })}
               </Text>
-              <View style={[styles.weekDayDateWrap, isToday && { backgroundColor: colors.accent }]}>
-                <Text style={[styles.weekDayDate, { color: colors.text }, holidayOrWeekend && !isToday && { color: colors.holiday }, isToday && { color: '#fff' }]}>
+              <View style={[styles.weekSevenDateWrap, { backgroundColor: colors.textDim + '25' }, isToday && { backgroundColor: colors.accent }]}>
+                <Text style={[styles.weekSevenDate, { color: colors.text }, isToday && { color: '#fff' }, holidayOrWeekend && !isToday && { color: colors.holiday }]}>
                   {date.getDate()}
                 </Text>
               </View>
-              <DayDots count={dayEventCount} dotColor={colors.dotColor} />
+              {count > 0 && (
+                <View style={[styles.weekSevenDot, { backgroundColor: colors.accent }]} />
+              )}
             </TouchableOpacity>
           );
         })}
       </View>
-      <ScrollView style={styles.weekGridScroll} contentContainerStyle={styles.weekGridContent}>
-        <View style={[styles.weekRow, styles.weekRowAllDay, { borderBottomColor: colors.textDim + '20', backgroundColor: colors.textDim + '10' }]}>
-          <View style={[styles.weekTimeCol, { borderRightColor: colors.textDim + '30' }]}>
-            <Text style={[styles.weekTimeText, { color: colors.textDim }]}>All-day</Text>
-          </View>
-          {days.map((date) => {
-            const dateStr = toLocalDateString(date);
-            return (
-              <View key={`all-day-${dateStr}`} style={[styles.weekCell, { borderRightColor: colors.textDim + '20' }]}>
-                {renderEvents(dateStr, null)}
-              </View>
-            );
-          })}
+
+      {isCenter && (
+      <ScrollView
+        style={styles.weekListScroll}
+        contentContainerStyle={styles.weekListContent}
+        showsVerticalScrollIndicator={true}
+      >
+        <View style={[styles.weekSelectedHeader, { borderBottomColor: colors.textDim + '20' }]}>
+          <Text style={[styles.weekSelectedLabel, { color: colors.textDim }]}>
+            {new Date((effectiveSelected || todayStr) + 'T12:00:00').toLocaleDateString(loc, { weekday: 'long', month: 'short', day: 'numeric' })}
+          </Text>
+          <Text style={[styles.weekSelectedCount, { color: colors.textDim }]}>
+            {t ? t('eventsCount', { count: selectedEvents.length }) : `${selectedEvents.length} event(s)`}
+          </Text>
         </View>
-        {Array.from({ length: 24 }, (_, hour) => (
-          <View key={`hour-${hour}`} style={[styles.weekRow, { borderBottomColor: colors.textDim + '15' }]}>
-            <View style={[styles.weekTimeCol, { borderRightColor: colors.textDim + '30' }]}>
-              <Text style={[styles.weekTimeText, { color: colors.textDim }]}>{`${hour.toString().padStart(2, '0')}:00`}</Text>
-            </View>
-            {days.map((date) => {
-              const dateStr = toLocalDateString(date);
-              return (
-                <View key={`${dateStr}-${hour}`} style={[styles.weekCell, { borderRightColor: colors.textDim + '15' }]}>
-                  {renderEvents(dateStr, hour)}
-                </View>
-              );
-            })}
-          </View>
-        ))}
+        {selectedEvents.length === 0 ? (
+          <Text style={[styles.weekDayBlockEmpty, { color: colors.textDim }]}>{t ? t('noEvents') : 'No events'}</Text>
+        ) : (
+          selectedEvents.map((event) => (
+            <TouchableOpacity
+              key={event.id}
+              style={[styles.weekDayEventRow, { borderLeftColor: colors.accent, backgroundColor: colors.textDim + '12' }]}
+              onPress={() => onEventPress?.(event)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.weekDayEventTime, { color: colors.textDim }]}>
+                {formatTimeForWeek(event.startTime || event.endTime, t)}
+              </Text>
+              <Text style={[styles.weekDayEventTitle, { color: colors.text }]} numberOfLines={1}>
+                {event.title}
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
+      )}
     </View>
   );
 }
 
-function SwipeableWeekView({ baseDate, onWeekChange, events, onSelectDate, colors }) {
+function SwipeableWeekView({ baseDate, onWeekChange, events, onSelectDate, onEventPress, colors, dateLocale, t }) {
   const scrollRef = React.useRef(null);
   const [centerDate, setCenterDate] = React.useState(baseDate);
   const [pageWidth, setPageWidth] = React.useState(null);
+  const [selectedDate, setSelectedDate] = React.useState(() => toLocalDateString(new Date()));
 
   React.useEffect(() => {
     const baseTime = baseDate.getTime();
     setCenterDate((prev) => (prev.getTime() !== baseTime ? new Date(baseDate) : prev));
   }, [baseDate]);
+
+  React.useEffect(() => {
+    const refDate = selectedDate ? new Date(selectedDate + 'T12:00:00') : new Date();
+    const weekday = refDate.getDay();
+    const newWeekStart = getWeekStart(centerDate);
+    const newDate = new Date(newWeekStart);
+    newDate.setDate(newWeekStart.getDate() + weekday);
+    const next = toLocalDateString(newDate);
+    if (next !== selectedDate) setSelectedDate(next);
+  }, [centerDate?.getTime?.()]);
 
   React.useEffect(() => {
     if (pageWidth > 0) {
@@ -256,6 +336,23 @@ function SwipeableWeekView({ baseDate, onWeekChange, events, onSelectDate, color
 
   const weeks = [getPrevWeek(centerDate), centerDate, getNextWeek(centerDate)];
 
+  const pendingScroll = React.useRef(false);
+
+  React.useLayoutEffect(() => {
+    if (pendingScroll.current && pageWidth > 0 && scrollRef.current) {
+      pendingScroll.current = false;
+      scrollRef.current.scrollTo({ x: pageWidth, y: 0, animated: false });
+    }
+  }, [centerDate, pageWidth]);
+
+  const handleSelectDate = React.useCallback(
+    (dateStr) => {
+      setSelectedDate(dateStr);
+      onSelectDate?.(dateStr);
+    },
+    [onSelectDate]
+  );
+
   const handleScrollEnd = React.useCallback(
     (e) => {
       if (!pageWidth) return;
@@ -264,18 +361,14 @@ function SwipeableWeekView({ baseDate, onWeekChange, events, onSelectDate, color
 
       if (page === 0) {
         const prev = getPrevWeek(centerDate);
+        pendingScroll.current = true;
         setCenterDate(prev);
         onWeekChange?.(prev);
-        requestAnimationFrame(() => {
-          scrollRef.current?.scrollTo({ x: pageWidth, y: 0, animated: false });
-        });
       } else if (page === 2) {
         const next = getNextWeek(centerDate);
+        pendingScroll.current = true;
         setCenterDate(next);
         onWeekChange?.(next);
-        requestAnimationFrame(() => {
-          scrollRef.current?.scrollTo({ x: pageWidth, y: 0, animated: false });
-        });
       }
     },
     [centerDate, pageWidth, onWeekChange]
@@ -295,8 +388,18 @@ function SwipeableWeekView({ baseDate, onWeekChange, events, onSelectDate, color
         contentContainerStyle={{ flexGrow: 1 }}
       >
         {weeks.map((d, i) => (
-          <View key={d.getTime()} style={{ width: pageWidth || width }}>
-            <WeekView baseDate={d} events={events} onSelectDate={onSelectDate} colors={colors} />
+          <View key={d.getTime()} style={{ width: pageWidth || width, flex: 1 }}>
+            <WeekView
+              baseDate={d}
+              events={events}
+              selectedDate={selectedDate}
+              onSelectDate={handleSelectDate}
+              onEventPress={onEventPress}
+              colors={colors}
+              dateLocale={dateLocale}
+              t={t}
+              isCenter={i === 1}
+            />
           </View>
         ))}
       </ScrollView>
@@ -312,17 +415,19 @@ function HomeScreen({
 }) {
   const { events, addEvent, addEvents, deleteEvent } = useEvents();
   const { colors } = useTheme();
+  const { t, dateLocale } = useLanguage();
   const [viewMode, setViewMode] = useState('month');
   const [pasteModalVisible, setPasteModalVisible] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [imageExtractVisible, setImageExtractVisible] = useState(false);
+  const [voiceInputVisible, setVoiceInputVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [previewDate, setPreviewDate] = useState(null);
   const [weekBaseDate, setWeekBaseDate] = useState(new Date());
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateString(new Date());
   const displayDate = previewDate || today;
 
   const monthOpacity = useRef(new Animated.Value(1)).current;
@@ -361,15 +466,15 @@ function HomeScreen({
     try {
       const extracted = await extractEventsFromText(trimmed, today);
       if (extracted.length === 0) {
-        Alert.alert('No events found', 'Could not find any schedule in the pasted text.');
+        Alert.alert(t('noEvents'), t('pasteNoEvents'));
       } else {
         await addEvents(extracted);
         setPasteModalVisible(false);
         setPasteText('');
-        Alert.alert('Done', `Added ${extracted.length} event(s) to your calendar.`);
+        Alert.alert(t('done'), t('addedCount', { count: extracted.length }));
       }
     } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to extract events.');
+      Alert.alert(t('error'), err.message || t('extractFailed'));
     } finally {
       setExtracting(false);
     }
@@ -387,9 +492,22 @@ function HomeScreen({
   const handleImageExtractConfirm = async (extracted) => {
     if (extracted?.length) {
       await addEvents(extracted);
-      Alert.alert('Done', `Added ${extracted.length} event(s) to your calendar.`);
+      Alert.alert(t('done'), t('addedCount', { count: extracted.length }));
     }
     setImageExtractVisible(false);
+  };
+
+  const handleVoiceInputConfirm = async (extracted) => {
+    if (extracted?.length) {
+      await addEvents(extracted);
+      Alert.alert(t('done'), t('addedCount', { count: extracted.length }));
+    }
+    setVoiceInputVisible(false);
+  };
+
+  const goToToday = () => {
+    setPreviewDate(today);
+    setWeekBaseDate(new Date());
   };
 
   if (settingsVisible) {
@@ -399,19 +517,26 @@ function HomeScreen({
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: colors.textDim + '30' }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Calendar</Text>
-        <View style={styles.toggleRow}>
+        <Text style={[styles.title, { color: colors.text }]}>{t('calendar')}</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.todayBtn, { backgroundColor: colors.card }]}
+            onPress={goToToday}
+          >
+            <Text style={[styles.todayBtnText, { color: colors.accent }]}>{t('today')}</Text>
+          </TouchableOpacity>
+          <View style={styles.toggleRow}>
           <TouchableOpacity
             style={[styles.toggleBtn, { backgroundColor: colors.card }, viewMode === 'month' && { backgroundColor: colors.accent }]}
             onPress={() => setViewMode('month')}
           >
-            <Text style={[styles.toggleText, { color: colors.textDim }, viewMode === 'month' && { color: colors.text }]}>Month</Text>
+            <Text style={[styles.toggleText, { color: colors.textDim }, viewMode === 'month' && { color: colors.text }]}>{t('month')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleBtn, { backgroundColor: colors.card }, viewMode === 'week' && { backgroundColor: colors.accent }]}
             onPress={() => setViewMode('week')}
           >
-            <Text style={[styles.toggleText, { color: colors.textDim }, viewMode === 'week' && { color: colors.text }]}>Week</Text>
+            <Text style={[styles.toggleText, { color: colors.textDim }, viewMode === 'week' && { color: colors.text }]}>{t('week')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleBtn, { backgroundColor: colors.card }]}
@@ -419,6 +544,7 @@ function HomeScreen({
           >
             <Text style={[styles.toggleText, { color: colors.text }]}>⚙️</Text>
           </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -493,34 +619,54 @@ function HomeScreen({
             }}
             events={events}
             onSelectDate={(d) => setPreviewDate(d)}
+            onEventPress={(e) => setSelectedEvent(e)}
             colors={colors}
+            dateLocale={dateLocale}
+            t={t}
           />
         </Animated.View>
       </View>
 
-      <SchedulePreview
-        dateStr={displayDate}
-        events={events}
-        onPressHeader={() => onSelectDate(displayDate)}
-        onEventPress={(e) => setSelectedEvent(e)}
-      />
+      {viewMode === 'month' && (
+        <SchedulePreview
+          dateStr={displayDate}
+          events={events}
+          onPressHeader={() => onSelectDate(displayDate)}
+          onEventPress={(e) => setSelectedEvent(e)}
+        />
+      )}
 
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.card }]} onPress={() => setPasteModalVisible(true)}>
-          <Text style={[styles.actionBtnText, { color: colors.text }]}>Paste & Extract</Text>
-        </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.card }]}
-          onPress={() => setImageExtractVisible(true)}
-        >
-          <Text style={[styles.actionBtnText, { color: colors.text }]}>📷 Images</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.actionBtnPrimary, { backgroundColor: colors.accent }]}
+          style={[styles.actionBtnPrimary, { backgroundColor: colors.accent }]}
           onPress={() => setAddModalVisible(true)}
+          activeOpacity={0.8}
         >
-          <Text style={styles.actionBtnTextPrimary}>+ Add Event</Text>
+          <Text style={styles.actionBtnTextPrimary}>{t('addEvent')}</Text>
         </TouchableOpacity>
+        <View style={styles.actionsSecondary}>
+          <TouchableOpacity
+            style={[styles.actionChip, { backgroundColor: colors.card }]}
+            onPress={() => setVoiceInputVisible(true)}
+          >
+            <Text style={[styles.actionChipIcon, { color: colors.text }]}>🎤</Text>
+            <Text style={[styles.actionChipText, { color: colors.text }]}>{t('voice')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionChip, { backgroundColor: colors.card }]}
+            onPress={() => setImageExtractVisible(true)}
+          >
+            <Text style={[styles.actionChipIcon, { color: colors.text }]}>📷</Text>
+            <Text style={[styles.actionChipText, { color: colors.text }]}>{t('images')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionChip, { backgroundColor: colors.card }]}
+            onPress={() => setPasteModalVisible(true)}
+          >
+            <Text style={[styles.actionChipIcon, { color: colors.text }]}>📋</Text>
+            <Text style={[styles.actionChipText, { color: colors.text }]}>{t('paste')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Modal visible={pasteModalVisible} animationType="slide" transparent>
@@ -529,11 +675,11 @@ function HomeScreen({
           style={styles.modalOverlay}
         >
           <View style={[styles.modalCard, { backgroundColor: colors.bg }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Paste text to extract events</Text>
-            <Text style={[styles.modalHint, { color: colors.textDim }]}>KakaoTalk, SMS, emails, etc.</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{t('pasteModalTitle')}</Text>
+            <Text style={[styles.modalHint, { color: colors.textDim }]}>{t('pasteModalHint')}</Text>
             <TextInput
               style={[styles.pasteInput, { backgroundColor: colors.card, color: colors.text }]}
-              placeholder="Paste your message here..."
+              placeholder={t('pastePlaceholder')}
               placeholderTextColor={colors.textDim}
               value={pasteText}
               onChangeText={setPasteText}
@@ -549,7 +695,7 @@ function HomeScreen({
                   setPasteText('');
                 }}
               >
-                <Text style={[styles.modalBtnText, { color: colors.textDim }]}>Cancel</Text>
+                <Text style={[styles.modalBtnText, { color: colors.textDim }]}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnPrimary, { backgroundColor: colors.accent }]}
@@ -559,7 +705,7 @@ function HomeScreen({
                 {extracting ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.modalBtnTextPrimary}>Extract & Add</Text>
+                  <Text style={styles.modalBtnTextPrimary}>{t('extractAndAdd')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -577,7 +723,16 @@ function HomeScreen({
             activeOpacity={1}
             onPress={() => setAddModalVisible(false)}
           />
-          <View style={[styles.modalCard, styles.addEventModalCard, { backgroundColor: colors.bg }]}>
+          <View
+            style={[
+              styles.modalCard,
+              styles.addEventModalCard,
+              {
+                backgroundColor: colors.bg,
+                height: Dimensions.get('window').height * 0.85,
+              },
+            ]}
+          >
             <AddEventForm
               selectedDate={displayDate}
               onSave={handleAddEventSave}
@@ -605,6 +760,13 @@ function HomeScreen({
         todayStr={today}
         existingEvents={events}
       />
+      <VoiceInputFlow
+        visible={voiceInputVisible}
+        onClose={() => setVoiceInputVisible(false)}
+        onConfirm={handleVoiceInputConfirm}
+        todayStr={today}
+        existingEvents={events}
+      />
     </SafeAreaView>
   );
 }
@@ -614,6 +776,7 @@ export default function AppNavigator() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const { events, loaded, updateEvent, deleteEvent } = useEvents();
   const { colors } = useTheme();
+  const { t } = useLanguage();
 
   const handleEventFormSave = async (event) => {
     if (event.id) {
@@ -638,7 +801,7 @@ export default function AppNavigator() {
         <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top']}>
           <View style={[styles.header, { borderBottomColor: colors.textDim + '30' }]}>
             <TouchableOpacity onPress={() => setSelectedDate(null)}>
-              <Text style={[styles.backBtn, { color: colors.accent }]}>← Back</Text>
+              <Text style={[styles.backBtn, { color: colors.accent }]}>{t('back')}</Text>
             </TouchableOpacity>
             <Text style={[styles.title, { color: colors.text }]}>{selectedDate}</Text>
           </View>
@@ -691,6 +854,13 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '700' },
   backBtn: { fontSize: 16, marginRight: 12 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  todayBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  todayBtnText: { fontSize: 14, fontWeight: '600' },
   toggleRow: { flexDirection: 'row', gap: 8 },
   toggleBtn: {
     paddingVertical: 8,
@@ -729,20 +899,33 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   actions: {
-    flexDirection: 'row',
-    padding: 20,
-    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 32,
   },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 14,
+  actionBtnPrimary: {
+    width: '100%',
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+    marginBottom: 12,
   },
-  actionBtnPrimary: {},
-  actionBtnText: { fontWeight: '600' },
-  actionBtnTextPrimary: { color: '#fff', fontWeight: '600' },
+  actionBtnTextPrimary: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  actionsSecondary: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  actionChipIcon: { fontSize: 16 },
+  actionChipText: { fontSize: 14, fontWeight: '600' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -756,8 +939,8 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   addEventModalCard: {
-    maxHeight: '90%',
     paddingBottom: 0,
+    flexShrink: 0,
   },
   modalTitle: { fontSize: 18, fontWeight: '700' },
   modalHint: { fontSize: 13, marginTop: 4, marginBottom: 12 },
@@ -785,61 +968,64 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  weekHeaderRow: {
-    flexDirection: 'row',
+  weekSummaryRow: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  weekTimeHeader: { width: 58 },
-  weekDayHeader: {
+  weekSummaryText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  weekSevenRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+  },
+  weekSevenCol: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingVertical: 6,
+    borderRightWidth: 1,
   },
-  weekDayName: { fontSize: 12, fontWeight: '600' },
-  weekDayDateWrap: {
+  weekSevenDayName: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
+  weekSevenDateWrap: {
     width: 28,
     height: 28,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
   },
-  weekDayDate: { fontSize: 16, fontWeight: '700' },
-  weekGridScroll: { maxHeight: 520 },
-  weekGridContent: { paddingBottom: 24 },
-  weekRow: {
+  weekSevenDate: { fontSize: 14, fontWeight: '700' },
+  weekSevenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 4,
+  },
+  weekSelectedHeader: {
     flexDirection: 'row',
-    minHeight: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  weekRowAllDay: { minHeight: 56, backgroundColor: 'rgba(255,255,255,0.02)' },
-  weekTimeCol: {
-    width: 58,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
   },
-  weekTimeText: { fontSize: 11, fontWeight: '600' },
-  weekCell: {
-    flex: 1,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.06)',
+  weekSelectedLabel: { fontSize: 15, fontWeight: '600' },
+  weekSelectedCount: { fontSize: 13 },
+  weekListScroll: { flex: 1 },
+  weekListContent: { padding: 14, paddingBottom: 24 },
+  weekDayBlockEmpty: { fontSize: 14 },
+  weekDayEventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderLeftWidth: 3,
   },
-  weekEventChip: {
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    marginBottom: 4,
-  },
-  weekEventText: { fontSize: 11, fontWeight: '600' },
+  weekDayEventTime: { fontSize: 12, width: 50 },
+  weekDayEventTitle: { flex: 1, fontSize: 15, fontWeight: '500' },
 });
